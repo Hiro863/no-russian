@@ -7,7 +7,7 @@ output:
     number_sections: true
     toc: yes
 ---
-# Initializations 
+# Initializations
 
 ```{r}
 library("pracma")
@@ -34,8 +34,8 @@ and create useful variables.
 ```{r}
 fname <- "SujA_Train_Cz.RData"
 if (sum(dir()==fname)!=1) {
-  file_url <- paste("https://www.i2m.univ-amu.fr/perso/bruno.torresani/MASCO/",fname)
-  download.file(url=file_url, destfile=fname, method="wget")
+  file_url <- paste("https://www.i2m.univ-amu.fr/perso/bruno.torresani/MASCO/",fname, sep="")
+  download.file(url=file_url, destfile=fname, method="libcurl")
 }
 load(fname)
 sig_array <- ATrCz$P300data
@@ -47,12 +47,14 @@ time_samples <- (1:nb_time_samples)/nb_time_samples
 nb_signals <- nb_runs*nb_rowcols*nb_trials
 target_chars <- ATrCz$TargetChar
 char_matrix <- ATrCz$char_matrix
+dim(sig_array)
 ```
 
 ### Questions {-}
-> - What is the dimension de <i>sig_array</i> ? 
-> 
+> - What is the dimension de <i>sig_array</i> ?
+>   - <b> Solution</b>: 85  12  15 240
 > - Can you interpret the above code (at least parts of it) ?
+>
 
 <br>
 The next step is to indentify signals that are expected to contain a P300, and split the dataset into two parts: signals that are expected to contain a P300 (i.e. for which the highlighted row or column contains the target character) and signals that aren't.
@@ -82,7 +84,7 @@ We can now split signals into the two classes of intetest: P300 and non-P300. Fo
 signals <- sig_array
 dim(signals) <- c(nb_signals,nb_time_samples)
 dim(classes) <- nb_signals
-#
+
 P300_ind <- which(classes == TRUE)
 nonP300_ind <- which(classes == FALSE)
 P300_sigs <- signals[P300_ind,]
@@ -96,23 +98,21 @@ nonP300_sigs <- signals[nonP300_ind,]
 >
 > - Plot these two averages in a single graphics (using <i>matplot</i> for example)
 >
-> - Comment the results: can you see a difference ? yes, signal entre 0.2 et 0.6
+> - Comment the results: can you see a difference ?
 > 
 > - Plot a few examples of P300 and non-P300 signals; can you see a significanty difference ?
 
 ```{r}
-P300_mean <- colMeans(P300_sigs) #comment
+P300_mean <- colMeans(P300_sigs) # please correct
 nonP300_mean <- colMeans(nonP300_sigs) # please correct
 average_signals <- matrix(c(P300_mean,nonP300_mean),ncol=2)
-matplot(time_samples,average_signals,type='l',lty=1,xlab='time (sec.)',ylab='Average response',main='Grand averages')
-legend(0.8, 4, legend=c("P300","nonP300"), col=c('black', 'red'), lty=1:2)
-num_samples = 30
-colfunc <- colorRampPalette(c("red", "blue"))
-sig <- matrix(P300_sigs[1:num_samples,], ncol=num_samples,byrow=T)
-matplot(time_samples, sig, type='l', lty=1, col=(colfunc(num_samples)))
+matplot(time_samples,average_signals,type='l',lty=1,xlab='time (sec.)',ylab='Average response',main='Grand averages', col=c("red", "blue"))
+legend(.75, 4, legend=c("P300", "non-P300"), col=c("red", "blue"), lty=1)
 
-sig2 <- matrix(nonP300_sigs[1:num_samples,], ncol=num_samples,byrow=T)
-matplot(time_samples, sig2, type='l', lty=1, col=(colfunc(num_samples)))
+num_samples = 30
+colfunc<-colorRampPalette(c("red", "blue"))
+sig <- matrix(P300_sigs[1:num_samples,], ncol=num_samples, byrow=T)
+matplot(time_samples, sig, type='l', lty=1, col=(colfunc(num_samples)))
 ```
 
 ## Construction of the detector
@@ -126,9 +126,18 @@ matplot(time_samples, sig2, type='l', lty=1, col=(colfunc(num_samples)))
 > - Plot the discriminant vector; anything worth to be interpreted ?
 
 ```{r}
-mean_diff <- P300_mean - nonP300_mean
-covmat <- 0 # to be completed
-W <- 0 # to be comleted
+
+# Create the design matrix
+X <- ATrCz$P300data
+dim(X) <- c(nb_signals, nb_time_samples)
+
+# Calculate W
+mean_diff <- P300_mean - nonP300_mean                # (m1 - m2)
+covmat <- cov(X)                                     # Sw
+W <- solve(covmat) %*% mean_diff                     # Sw^-1 (m1 - m2)
+beta <- as.numeric(1 / sqrt(t(W)%*% covmat %*% W))   # beta^2 W^t Sw W = 1
+W <- beta * W                                        # Normalise
+
 plot(time_samples,W,type='l',xlab='Time (sec.)',ylab='Discr. vector',col='blue')
 ```
 
@@ -145,9 +154,9 @@ It is now time to test the detector on the training dataset (before moving to th
 > - compute the mean with respect to trials (look at the help for the function <i>apply</i>)
 
 ```{r}
-scores <- 0 # to be done
-dim(scores) <- 1 # to be completed
-mean_scores <- 0 # to be completed
+scores <-  X %*% W
+dim(scores) <- c(nb_runs, nb_rowcols, nb_trials)
+mean_scores <- apply(scores, MARGIN=c(1, 2), mean)
 ```
 
 ### Questions {-}
@@ -166,21 +175,24 @@ mean_scores <- 0 # to be completed
 ```{r}
 predicted_char <- character(nb_runs)
 
-for (run in 1:nb_runs){
+for (run in 1:nb_runs)
+{
   subscores <- mean_scores[run,]
-  predicted_column <- 0 # use the function "order" here
-  predicted_row <- 0 # same thing
+  all_indices <- order(subscores, decreasing=TRUE)        # order the indices
+  predicted_column <- all_indices[all_indices <= 6][1]    # columns are between 1 and 6
+  predicted_row <- all_indices[all_indices > 6][1] - 6    # rows are between 7 and 12
   predicted_char[run] <- char_matrix[predicted_row,predicted_column]
 }
-detection_pcent <- 0 # to be corrected
-print(paste('Detection rate:',detection_pcent))
+
+detection_pcent <- round(sum(predicted_char == target_chars) / length(predicted_char) * 100, digits=1)
+print(paste('Detection rate:',detection_pcent, '%'))
 ```
 
 ## LDA-based detection
 Now you know how it works, and you can find directly the discriminant vector using the <i>lda</i> function from the <i>MASS</i> package. The syntax is as follows, <i>lda</i> returns a list (called here <i>lda_train</i>) with several elements, one of which (<i>scaling</i>) is the discriminant vector (which should be almost identical to the one you have found, up to a constant factor, therefore detection results should be identical).
 ```{r}
 lda_train <- lda(signals,classes)
-W_lda <- lda_train$toto # to be corrected
+W_lda <- lda_train$scaling
 plot(time_samples,W_lda,type='l',xlab='Time (sec.)',col='blue')
 ```
 
@@ -188,6 +200,12 @@ plot(time_samples,W_lda,type='l',xlab='Time (sec.)',col='blue')
 > - Examine the elements of <i>lda_train</i> and interpret those you understand (take a look at the <i>help</i>)
 > 
 > - Plot <i>W_lda</i> as a function of <i>W</i> (preferably using points, not lines); what can you see ?
+
+```{r}
+diff <- sum(W_lda - W)
+print(diff)
+plot(W_lda, W)
+```
 
 
 ## Evaluation on the test dataset
@@ -203,8 +221,94 @@ Good results can be expected on the dataset that has been used to learn the dete
 > - Are you happy with the result ? how do you explain the difference ?
 
 ```{r}
+
+
+load_data <- function(fname, path)
+{
+  if (sum(dir()==fname)!=1) 
+  {
+    file_url <- paste(path,fname, sep="")
+    print(file_url)
+    download.file(url=file_url, destfile=fname, method="libcurl")
+  }
+}
+
+```
+
+
+```{r}
+train <- function(data)
+{
+  signals <- data$P300data
+  target_chars <- data$TargetChar
+  
+  nb_runs <- dim(signals)[1]
+  nb_rowcols <- dim(signals)[2]
+  nb_trials <- dim(signals)[3]
+  nb_time_samples <- dim(signals)[4]
+  nb_signals <- nb_runs * nb_rowcols * nb_trials
+  dim(signals) <- c(nb_signals,nb_time_samples)
+
+  dim(classes) <- nb_signals
+  
+  classes <- logical(nb_signals)
+  dim(classes) <- c(nb_runs,nb_rowcols,nb_trials)
+
+  for (run in 1:nb_runs)
+  {
+    targ <- target_chars[run]
+    good_row <- which(rowSums(char_matrix==targ)==1)
+    good_col <- which(colSums(char_matrix==targ)==1)
+    good_inds <- c(good_col,good_row+6)
+    classes[run,good_inds,] <- TRUE
+  }
+  lda_train <- lda(signals,classes)
+  W <- lda_train$scaling
+  
+  return (W)
+}
+```
+
+
+```{r}
+predict <- function(W, X_test, test_dim)
+{
+
+  dim(X_test) <- c(test_dim[1] * test_dim[2] * test_dim[3], test_dim[4])
+  test_scores <- X_test %*% W
+  dim(test_scores) <- c(test_dim[1], test_dim[2], test_dim[3])
+  
+  
+  
+  test_mean_scores <- apply(test_scores, MARGIN=c(1, 2), mean)
+
+  predicted_char <- character(test_dim[1])
+
+  for (run in 1:test_dim[1])
+  {
+    subscores <- test_mean_scores[run,]
+    all_indices <- order(subscores, decreasing=TRUE)        # order the indices
+    predicted_column <- all_indices[all_indices <= 6][1]    # columns are between 1 and 6
+    predicted_row <- all_indices[all_indices > 6][1] - 6    # rows are between 7 and 12
+    predicted_char[run] <- char_matrix[predicted_row,predicted_column]
+  }
+  
+  return (predicted_char)
+}
+```
+
+```{r}
 fname <- "SujA_Test_Cz.RData"
-# Please continue
+path <- "https://www.i2m.univ-amu.fr/perso/bruno.torresani/MASCO/"
+load_data(fname, path)
+load(fname)
+X_test <- ATeCz$P300data
+test_target <- ATeCz$TargetChar
+test_dim <- dim(X_test)
+
+predicted_char <- predict(W_lda, X_test, test_dim)
+detection_pcent <- round(sum(predicted_char == test_target) / length(predicted_char) * 100, digits=1)
+print(paste('Detection rate:',detection_pcent, '%'))
 ```
 
 ## Same analysis, subject B
@@ -215,10 +319,34 @@ fname <- "SujA_Test_Cz.RData"
 
 ```{r}
 fname <- "SujB_Train_Cz.RData"
+load_data(fname, path)
+load(fname)
+X_B_train <- BTrCz$P300data
+
 # Compute discriminant vector
+W_B <- train(BTrCz)
+
 # Evaluate prediction results on train dataset
+B_train_target <- BTrCz$TargetChar
+train_dim <- dim(X_B_train)
+
+predicted_char <- predict(W_B, X_B_train, train_dim)
+detection_pcent <- round(sum(predicted_char == B_train_target) / length(predicted_char) * 100, digits=1)
+print(paste('Detection rate:',detection_pcent, '%'))
+
+
 fname <- "SujB_Test_Cz.RData"
+load_data(fname, path)
+load(fname)
+X_B_test <- BTeCz$P300data
+B_test_target <- BTeCz$TargetChar
+test_dim <- dim(X_B_test)
+
 # Evaluate results on test dataset
+
+predicted_char <- predict(W_B, X_B_test, test_dim)
+detection_pcent <- round(sum(predicted_char == B_test_target) / length(predicted_char) * 100, digits=1)
+print(paste('Detection rate:',detection_pcent, '%'))
 ```
 
 ## How to deal with overfitting
@@ -235,13 +363,34 @@ A possible subspace can be obtained using principal component analysis. In such 
 Here we will rather use a variant of the Fourier bases (sines and cosines), which has the advantage of avoiding complex numbers (and therefore only uses cosines): the <i> discrete cosine transform</i>.
 
 Discrete cosine transform is provided by the <i>dct</i> function from the package <i>dtt</i> (please install).  The following instructions compute the coefficients of the orthogonal projection of signals onto the first K vectors of the basis (here K=30, as an example), which then provide a representation of data by a <i>nb_signals</i> * K array. Classification can then be done as before using that array.
- 
+
  
 ```{r}
-K <- 30
+K <- 240#30
 signals_dct_coeffs <- dct(signals)
 signals_dct_coeffs <- signals_dct_coeffs[,1:K]
-# To be continued
+
+lda_dct <- lda(signals_dct_coeffs, classes)
+W_dct <- lda_dct$scaling
+
+
+dct_test_scores <- signals_dct_coeffs %*% W_dct
+dim(dct_test_scores) <- c(nb_runs, nb_rowcols, nb_trials)
+
+dct_test_mean_scores <- apply(dct_test_scores, MARGIN=c(1, 2), mean)
+dct_predicted_char <- character(nb_runs )
+
+for (run in 1:nb_runs)
+{
+  subscores <- dct_test_mean_scores[run,]
+  all_indices <- order(subscores, decreasing=TRUE)        # order the indices
+  predicted_column <- all_indices[all_indices <= 6][1]    # columns are between 1 and 6
+  predicted_row <- all_indices[all_indices > 6][1] - 6    # rows are between 7 and 12
+  dct_predicted_char[run] <- char_matrix[predicted_row,predicted_column]
+}
+
+detection_pcent <- round(sum(dct_predicted_char == A_train_target) / length(dct_predicted_char) * 100, digits=1)
+print(paste('Detection rate:',detection_pcent, '%'))
 ```
 
 
