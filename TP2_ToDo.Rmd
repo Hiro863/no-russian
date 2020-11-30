@@ -52,9 +52,11 @@ dim(sig_array)
 
 ### Questions {-}
 > - What is the dimension de <i>sig_array</i> ?
->   - <b> Solution</b>: 85  12  15 240
+>   - (85, 12, 15, 240)
 > - Can you interpret the above code (at least parts of it) ?
->
+>   - download the data (if not in the directory)
+>   - rename substructures of the data for convenience
+>   - calculate additional useful parameters (e.g. <i>nb_signals</i>)
 
 <br>
 The next step is to indentify signals that are expected to contain a P300, and split the dataset into two parts: signals that are expected to contain a P300 (i.e. for which the highlighted row or column contains the target character) and signals that aren't.
@@ -76,6 +78,9 @@ for (run in 1:nb_runs){
 
 ### Question {-}
 > - can you interpret this sequence of instructions ?
+>   - for each runs and for each indices check if the corresponding rows/columns contain the target character
+>   - if so set the corresponding value in <i> classes</i> to <i>TRUE</i>
+>   - this creates a vector of correct labels 
 
 <br>
 We can now split signals into the two classes of intetest: P300 and non-P300. For this, it is useful to create a copy (named <i>signals</i>) of <i>sig_array</i> with a different organization, i.e. a matrix whose rows represent signals and columns represent time samples. This operation is called <i>reshaping</i>. The same operation is done on the array <i>classes</i>.
