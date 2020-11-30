@@ -1,0 +1,258 @@
+---
+title: "Methodes Algebriques, TP2"
+author: "B. Torresani"
+date: "2020-21"
+output:
+  html_notebook:
+    number_sections: true
+    toc: yes
+---
+# Initializations 
+
+```{r}
+library("pracma")
+library("MASS")
+library("dtt")
+```
+
+# PCA on P300 speller data
+You can include here your work on PCA on P300 data (Cz sensor)
+
+# Detection on P300 speller: Cz sensor
+We now turn to the problem of detecting the presence of a P300 in P300 speller data. The goal of this section is to construct a decision rule (based on Fisher's discriminant) from a training dataset.
+
+## Load data and prepare
+A first step is to load data in memory (and before, download them to disk if necessary). First run the above cell. It will (down)load a list with several fields:
+
+- <i>P300data</i>: contain signals (all runs, highlighted rows and columns, and trials)
+
+- <i>TargetChar</i>: target character, one per run
+
+- <i>char_matrix</i>: matrix of characters that are displayed on the screen
+
+and create useful variables.
+```{r}
+fname <- "SujA_Train_Cz.RData"
+if (sum(dir()==fname)!=1) {
+  file_url <- paste("https://www.i2m.univ-amu.fr/perso/bruno.torresani/MASCO/",fname)
+  download.file(url=file_url, destfile=fname, method="wget")
+}
+load(fname)
+sig_array <- ATrCz$P300data
+nb_runs <- dim(sig_array)[1]
+nb_rowcols <- dim(sig_array)[2]
+nb_trials <- dim(sig_array)[3]
+nb_time_samples <- dim(sig_array)[4]
+time_samples <- (1:nb_time_samples)/nb_time_samples
+nb_signals <- nb_runs*nb_rowcols*nb_trials
+target_chars <- ATrCz$TargetChar
+char_matrix <- ATrCz$char_matrix
+```
+
+### Questions {-}
+> - What is the dimension de <i>sig_array</i> ? 
+> 
+> - Can you interpret the above code (at least parts of it) ?
+
+<br>
+The next step is to indentify signals that are expected to contain a P300, and split the dataset into two parts: signals that are expected to contain a P300 (i.e. for which the highlighted row or column contains the target character) and signals that aren't.
+
+
+For this, an array <i>classes</i> is created, of type <i>logical</i> (i.e. whose elements are either <i>TRUE</i> or <i>FALSE</i>). Signals that are expected to contain a P300 will be labeled <i>TRUE</i>, the others are labelled <i>FALSE</i>. Remember, rows are columns are labelled from 1 to 12, the first 6 correspond to columns, and the last 6 (from 7 to 12) to rows.
+
+```{r}
+classes <- logical(nb_signals)
+dim(classes) <- c(nb_runs,nb_rowcols,nb_trials)
+for (run in 1:nb_runs){
+  targ <- target_chars[run]
+  good_row <- which(rowSums(char_matrix==targ)==1)
+  good_col <- which(colSums(char_matrix==targ)==1)
+  good_inds <- c(good_col,good_row+6)
+  classes[run,good_inds,] <- TRUE
+}
+```
+
+### Question {-}
+> - can you interpret this sequence of instructions ?
+
+<br>
+We can now split signals into the two classes of intetest: P300 and non-P300. For this, it is useful to create a copy (named <i>signals</i>) of <i>sig_array</i> with a different organization, i.e. a matrix whose rows represent signals and columns represent time samples. This operation is called <i>reshaping</i>. The same operation is done on the array <i>classes</i>.
+
+```{r}
+signals <- sig_array
+dim(signals) <- c(nb_signals,nb_time_samples)
+dim(classes) <- nb_signals
+#
+P300_ind <- which(classes == TRUE)
+nonP300_ind <- which(classes == FALSE)
+P300_sigs <- signals[P300_ind,]
+nonP300_sigs <- signals[nonP300_ind,]
+```
+
+### Questions {-}
+> Now you can start the real work
+>
+> - Compute the average of P300 and non-P300 signals (average over runs, rows and columns, and trials)
+>
+> - Plot these two averages in a single graphics (using <i>matplot</i> for example)
+>
+> - Comment the results: can you see a difference ? yes, signal entre 0.2 et 0.6
+> 
+> - Plot a few examples of P300 and non-P300 signals; can you see a significanty difference ?
+
+```{r}
+P300_mean <- colMeans(P300_sigs) #comment
+nonP300_mean <- colMeans(nonP300_sigs) # please correct
+average_signals <- matrix(c(P300_mean,nonP300_mean),ncol=2)
+matplot(time_samples,average_signals,type='l',lty=1,xlab='time (sec.)',ylab='Average response',main='Grand averages')
+legend(0.8, 4, legend=c("P300","nonP300"), col=c('black', 'red'), lty=1:2)
+num_samples = 30
+colfunc <- colorRampPalette(c("red", "blue"))
+sig <- matrix(P300_sigs[1:num_samples,], ncol=num_samples,byrow=T)
+matplot(time_samples, sig, type='l', lty=1, col=(colfunc(num_samples)))
+
+sig2 <- matrix(nonP300_sigs[1:num_samples,], ncol=num_samples,byrow=T)
+matplot(time_samples, sig2, type='l', lty=1, col=(colfunc(num_samples)))
+```
+
+## Construction of the detector
+
+### Questions {-}
+
+> - Calculate the sample covariance matrix of the <i>signals</i> matrix
+>
+> - From this and the difference between averages compute the discriminant vector
+>
+> - Plot the discriminant vector; anything worth to be interpreted ?
+
+```{r}
+mean_diff <- P300_mean - nonP300_mean
+covmat <- 0 # to be completed
+W <- 0 # to be comleted
+plot(time_samples,W,type='l',xlab='Time (sec.)',ylab='Discr. vector',col='blue')
+```
+
+## Evaluation of the detector on the training dataset
+It is now time to test the detector on the training dataset (before moving to the test dataset). For this, we will assign to each one of the 15300 signals a <i>score</i>, given by its inner product with the discriminant vector. This produces 15300 scores, from which you will extract the letter that has been predicted by the classifier.
+
+### Questions {-}
+> Complete the above cell as follows
+>
+> - obtain a score for each signal (before going further, verify that you get a variable of the right size...)
+>
+> - reshape the scores so as to have an array <i>nb_runs</i> * <i>nb_rowcols</i> * <i>nb_trials</i>
+>
+> - compute the mean with respect to trials (look at the help for the function <i>apply</i>)
+
+```{r}
+scores <- 0 # to be done
+dim(scores) <- 1 # to be completed
+mean_scores <- 0 # to be completed
+```
+
+### Questions {-}
+> Next we need to identify, for each run, which row and column have the largest score, get the corresponding character and compare the obtained characters with the target characters to get a percentage of good results. Within a loop:
+>
+> - For each run, evaluate the best row and the best column (you can use the function <i>order</i>, look at the syntax on the help)
+>
+> - Still for each run, find the character that corresponds to the best row and column (use the matrix <i>char_matrix</i>)
+>
+> At the end of the loop you have obtained the characters predicted by the system (should be a vector of length <i>nb_runs</i>, you can call it <i>predicted_char</i> for example).
+>
+> - Evaluate how many characters were correctly predicted (you can use the comparison <i>predicted_char==target_chars</i>, that returns a vector of <i>logicals</i>,<i>TRUE</i> when character coincide and <i>FALSE</i> otherwise.
+>
+> - Are you satisfied with the success rate ? Here are some elements for a fair comparison: what would be the success rate if characters were chosen randomly for each run ? would the obtained success rate be acceptable for practical use ?
+
+```{r}
+predicted_char <- character(nb_runs)
+
+for (run in 1:nb_runs){
+  subscores <- mean_scores[run,]
+  predicted_column <- 0 # use the function "order" here
+  predicted_row <- 0 # same thing
+  predicted_char[run] <- char_matrix[predicted_row,predicted_column]
+}
+detection_pcent <- 0 # to be corrected
+print(paste('Detection rate:',detection_pcent))
+```
+
+## LDA-based detection
+Now you know how it works, and you can find directly the discriminant vector using the <i>lda</i> function from the <i>MASS</i> package. The syntax is as follows, <i>lda</i> returns a list (called here <i>lda_train</i>) with several elements, one of which (<i>scaling</i>) is the discriminant vector (which should be almost identical to the one you have found, up to a constant factor, therefore detection results should be identical).
+```{r}
+lda_train <- lda(signals,classes)
+W_lda <- lda_train$toto # to be corrected
+plot(time_samples,W_lda,type='l',xlab='Time (sec.)',col='blue')
+```
+
+### Questions{-}
+> - Examine the elements of <i>lda_train</i> and interpret those you understand (take a look at the <i>help</i>)
+> 
+> - Plot <i>W_lda</i> as a function of <i>W</i> (preferably using points, not lines); what can you see ?
+
+
+## Evaluation on the test dataset
+Good results can be expected on the dataset that has been used to learn the detector. To get a fair evaluation, the detector has to be evaluated on an independent dataset, called the test dataset.
+
+### Questions {-}
+> - Download the file <i>SujA_Test_Cz.RData</i> from the same web site as before (use the same instructions as in the beginning of the notebook), and load it into memory
+>
+> - Using the discriminant vector computed with the training dataset, compute scores on the test set, and find predicted characters
+>
+> - Compare predicted characters to target characters (which are available for evaluation only, not for finding another discriminant vector)
+>
+> - Are you happy with the result ? how do you explain the difference ?
+
+```{r}
+fname <- "SujA_Test_Cz.RData"
+# Please continue
+```
+
+## Same analysis, subject B
+### Questions{-}
+> - You can download training and test datasets from another subject, and do exactly the same analysis. Most steps will be copy and paste from what you did for subject A... but be careful...
+> 
+> - How do results compare with subject A ?
+
+```{r}
+fname <- "SujB_Train_Cz.RData"
+# Compute discriminant vector
+# Evaluate prediction results on train dataset
+fname <- "SujB_Test_Cz.RData"
+# Evaluate results on test dataset
+```
+
+## How to deal with overfitting
+Detection results are globally not satisfactory:
+
+- low success rate (in particular for subject B)
+
+- strong overfitting (important difference between training dataset and test dataset): the detector has learned features that are too specific to the training dataset and are not present in the test dataset. These features can be called <i>noise</i>
+
+Noise reduction can be achieved by projecting onto a suitable ubspace of the space of signals, or lower dimension. As we have seen, the simplest way to do that is to project onto a subspace generated by an orthonormal family of vectors.
+
+A possible subspace can be obtained using principal component analysis. In such a case, the basis is data dependent, and may be subject to overfitting too.
+
+Here we will rather use a variant of the Fourier bases (sines and cosines), which has the advantage of avoiding complex numbers (and therefore only uses cosines): the <i> discrete cosine transform</i>.
+
+Discrete cosine transform is provided by the <i>dct</i> function from the package <i>dtt</i> (please install).  The following instructions compute the coefficients of the orthogonal projection of signals onto the first K vectors of the basis (here K=30, as an example), which then provide a representation of data by a <i>nb_signals</i> * K array. Classification can then be done as before using that array.
+ 
+ 
+```{r}
+K <- 30
+signals_dct_coeffs <- dct(signals)
+signals_dct_coeffs <- signals_dct_coeffs[,1:K]
+# To be continued
+```
+
+
+
+# More sensors
+So far, only the Cz sensor has been used, although 64 sensors are available. The question is: <i>can we improve results by taking more sensors into account ?</i>
+
+Bigger datasets, involving more sensors will be provided on the same website as single sensor data.
+
+## A four sensors dataset
+Data corresponding to four sensors (a specific choice, expected to be relevant) are provided on the web site.
+Signals corresponding to the four sensors can be concatenated, yielding a dataset of teh same size as before, except the last dimension which now equals 4*240 = 960 samples.
+
+## Two eight sensors datasets
